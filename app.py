@@ -1,11 +1,9 @@
 # final.py — AI Lecture Voice-to-Notes Generator (Unified Edition)
 
 import streamlit as st
-import whisper
 import tempfile
 import os
 import json
-import subprocess
 from datetime import datetime
 from typing import List
 import google.generativeai as genai
@@ -28,12 +26,9 @@ genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 # -------------------- MODELS (CACHED) --------------------
 @st.cache_resource
 def load_models():
-    return (
-        whisper.load_model("base"),
-        SentenceTransformer("all-MiniLM-L6-v2")
-    )
+    return SentenceTransformer("all-MiniLM-L6-v2")
 
-whisper_model, embedder = load_models()
+embedder = load_models()
 
 # -------------------- SIDEBAR --------------------
 st.sidebar.title("📚 Lecture Manager")
@@ -75,60 +70,11 @@ def load_lecture(name):
     with open(os.path.join(DATA_DIR, name), encoding="utf-8") as f:
         return json.load(f)
 
-def preprocess_audio(path):
-    out = path + "_clean.wav"
-    try:
-        subprocess.run(
-            ["ffmpeg", "-y", "-i", path, "-af", "silenceremove=1:0:-50dB", out],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
-        return out if os.path.exists(out) else path
-    except:
-        return path
-
 def semantic_search(text, query):
     t_emb = embedder.encode(text, convert_to_tensor=True)
     q_emb = embedder.encode(query, convert_to_tensor=True)
     return util.cos_sim(q_emb, t_emb).item()
 
-def chunk_segments(segments, max_words=120):
-    chunks = []
-    current = ""
-    start, end = None, None
-
-    for seg in segments:
-        words = seg["text"].split()
-        if start is None:
-            start = seg["start"]
-
-        if len(current.split()) + len(words) <= max_words:
-            current += " " + seg["text"]
-            end = seg["end"]
-        else:
-            chunks.append((start, end, current.strip()))
-            current = seg["text"]
-            start, end = seg["start"], seg["end"]
-
-    if current:
-        chunks.append((start, end, current.strip()))
-
-    return chunks
-
-def chapter_detection(chunks):
-    texts = [c[2] for c in chunks]
-    embeds = embedder.encode(texts)
-
-    chapters = [[chunks[0]]]
-
-    for i in range(1, len(chunks)):
-        sim = util.cos_sim(embeds[i-1], embeds[i])
-        if sim < 0.65:
-            chapters.append([chunks[i]])
-        else:
-            chapters[-1].append(chunks[i])
-
-    return chapters
 
 def generate_ai(text):
     mode = "Explain everything in very simple words for a child." if eli5 else "Explain clearly for exam preparation."
@@ -153,6 +99,21 @@ Lecture:
     model = genai.GenerativeModel("gemini-2.5-flash")
     return model.generate_content(prompt).text
 
+def transcribe_audio(uploaded_file):
+    model = genai.GenerativeModel("models/gemini-1.5-pro")
+
+    audio_bytes = uploaded_file.read()
+
+    response = model.generate_content([
+        "Transcribe this lecture accurately. Preserve timestamps where possible.",
+        {
+            "mime_type": uploaded_file.type,
+            "data": audio_bytes
+        }
+    ])
+
+    return response.text
+
 # -------------------- MAIN UI --------------------
 st.title("🎙️ AI Lecture Voice-to-Notes Generator")
 
@@ -173,36 +134,11 @@ if selected != "New Lecture":
 uploaded = st.file_uploader("Upload lecture audio/video", ["mp3", "wav", "mp4"])
 
 if uploaded and st.button("🚀 Generate Notes"):
-    with tempfile.NamedTemporaryFile(delete=False) as tmp:
-        tmp.write(uploaded.read())
-        path = tmp.name
+    with st.spinner("📝 Transcribing audio..."):
+        transcript = transcribe_audio(uploaded)
 
-    if trim_audio:
-        with st.spinner("🔊 Preprocessing audio..."):
-            path = preprocess_audio(path)
-
-    with st.spinner("📝 Transcribing with Whisper..."):
-        result = whisper_model.transcribe(path)
-
-    segments = result["segments"]
-    detected_lang = result.get("language", "unknown")
-
+    detected_lang = final_lang
     st.success(f"Transcription completed! Detected language: {detected_lang}")
-
-    chunks = chunk_segments(segments)
-    chapters = chapter_detection(chunks)
-
-    # Sidebar chapter list
-    st.sidebar.subheader("📑 Chapters")
-    for i in range(len(chapters)):
-        st.sidebar.markdown(f"- Chapter {i+1}")
-
-    # Build transcript
-    transcript = ""
-    for i, ch in enumerate(chapters, 1):
-        transcript += f"\n## 📌 Chapter {i}\n"
-        for s, e, t in ch:
-            transcript += f"[{s:.2f}-{e:.2f}] {t}\n"
 
     # AI generation
     with st.spinner("🤖 Generating AI study materials..."):
@@ -221,9 +157,3 @@ if uploaded and st.button("🚀 Generate Notes"):
     })
 
     st.success("✅ Lecture saved successfully!")
-
-    # Cleanup
-    try:
-        os.remove(path)
-    except:
-        pass
