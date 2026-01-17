@@ -100,19 +100,26 @@ Lecture:
     return model.generate_content(prompt).text
 
 def transcribe_audio(uploaded_file):
-    model = genai.GenerativeModel("models/gemini-1.5-pro")
+    model = genai.GenerativeModel("gemini-2.5-flash")
 
-    audio_bytes = uploaded_file.read()
+    prompt = f"""
+You are an expert transcription system.
+
+Task:
+Transcribe the following lecture audio accurately.
+Do NOT hallucinate.
+If timestamps are not possible, just return clean text.
+
+Respond with plain text only.
+"""
 
     response = model.generate_content([
-        "Transcribe this lecture accurately. Preserve timestamps where possible.",
-        {
-            "mime_type": uploaded_file.type,
-            "data": audio_bytes
-        }
+        prompt,
+        uploaded_file
     ])
 
     return response.text
+
 
 # -------------------- MAIN UI --------------------
 st.title("🎙️ AI Lecture Voice-to-Notes Generator")
@@ -157,3 +164,4 @@ if uploaded and st.button("🚀 Generate Notes"):
     })
 
     st.success("✅ Lecture saved successfully!")
+
