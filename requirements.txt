@@ -1,0 +1,11 @@
+streamlit
+openai-whisper
+google-generativeai
+torch
+numpy
+pydub
+soundfile
+sentence-transformers
+scikit-learn
+tqdm
+ffmpeg-python
