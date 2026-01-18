@@ -19,7 +19,7 @@ whisper_model = load_whisper()
 
 # Gemini API
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-gemini_model = genai.GenerativeModel("gemini-1.5-flash")
+gemini_model = genai.GenerativeModel("gemini-2.5-flash")
 
 # ---------------- FUNCTIONS ----------------
 
@@ -80,3 +80,4 @@ if uploaded and st.button("🚀 Generate Notes"):
         notes,
         file_name="lecture_notes.txt"
     )
+
