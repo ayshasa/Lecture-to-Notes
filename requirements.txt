@@ -4,3 +4,5 @@ torch
 numpy
 google-generativeai
 ffmpeg-python
+sentence-transformers
+scikit-learn
